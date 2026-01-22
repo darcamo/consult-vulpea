@@ -80,6 +80,14 @@ Defaults to `consult-preview-key'."
                  key-sequence)
   :group 'consult-vulpea)
 
+(defcustom consult-vulpea-expand-aliases-default nil
+  "Default value for expanding note aliases in completion.
+When non-nil, notes with aliases will appear multiple times in the
+selection list - once for the title and once for each alias.
+This can be overridden per-call with the :expand-aliases parameter."
+  :type 'boolean
+  :group 'consult-vulpea)
+
 ;;;; Helper functions
 
 (defun consult-vulpea--note-preview ()
@@ -113,8 +121,12 @@ consult-style live previews.
 PROMPT is the message to present.
 REQUIRE-MATCH when non-nil means user must select an existing note.
 INITIAL-PROMPT is the initial input for the prompt.
-EXPAND-ALIASES when non-nil expands note aliases for completion."
-  (let* ((expanded-notes (if expand-aliases
+EXPAND-ALIASES when non-nil expands note aliases for completion.
+If not specified, defaults to `consult-vulpea-expand-aliases-default'."
+  (let* ((should-expand (if expand-aliases
+                            expand-aliases
+                          consult-vulpea-expand-aliases-default))
+         (expanded-notes (if should-expand
                              (seq-mapcat #'vulpea-note-expand-aliases notes)
                            notes))
          ;; Build candidates as alist: (description . note)
