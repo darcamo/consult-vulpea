@@ -59,6 +59,20 @@
   :group 'minibuffer
   :link '(url-link :tag "GitHub" "https://github.com/fabcontigiani/consult-vulpea"))
 
+
+(defface consult-vulpea-preview-face
+  '((t :inherit match))
+  "Face used for consult vulpea previews.")
+
+
+(defvar consult-vulpea--overlays nil "List of overlays added during preview.
+
+This is added when previewing note backlinks, and cleared when preview finishes.")
+
+
+(defvar consult-vulpea--current-note-id nil "ID of the current note when previewing backlinks.")
+
+
 ;;;; User options
 
 (defcustom consult-vulpea-grep-command #'consult-ripgrep
@@ -80,7 +94,55 @@ Defaults to `consult-preview-key'."
                  key-sequence)
   :group 'consult-vulpea)
 
+
+(defcustom consult-vulpea-narrow-heading-note nil
+  "Narrow heading note while previwing.
+
+This is useful when previewing heading notes, as it will narrow the
+buffer to the heading note and its children, making it easier to read."
+  :type 'boolean
+  :group 'consult-vulpea)
+
 ;;;; Helper functions
+
+(defun consult-vulpea--get-link-at-point-bounds (&optional point)
+  "Get the bounds of the link at POINT (or current point if nil).
+
+Returns a cons cell (BEGIN . END) of the link's bounds, or nil if
+no link is found."
+  (when (derived-mode-p 'org-mode)
+    (save-excursion
+      (when point
+        (goto-char point))
+      (let* ((element (org-element-context))
+             (type (org-element-type element)))
+        (when (eq type 'link)
+          (cons
+           (org-element-property :begin element)
+           (org-element-property :end element)))))))
+
+(defun consult-vulpea--highlight-link (link)
+  "Create an overlay for the given LINK in the current buffer.
+
+The created overlay is added to `consult-vulpea--overlays' for later
+cleaning."
+  (when link
+    (when-let* ((link-pos (plist-get link :pos))
+                (link-bounds
+                 (consult-vulpea--get-link-at-point-bounds link-pos))
+                (overlay (make-overlay (car link-bounds) (cdr link-bounds))))
+      (overlay-put overlay 'face 'consult-vulpea-preview-face)
+      (push overlay consult-vulpea--overlays))))
+
+(defun consult-vulpea--before-find-backlink ()
+  "Advice that will be added before `vulpea-find-backlink'.
+
+This advice only role is to store the ID of the current note in
+`consult-vulpea--current-note-id' before calling the original
+`vulpea-find-backlink' function."
+  (when (derived-mode-p 'org-mode)
+    (when-let* ((id (org-entry-get nil "ID" t)))
+      (setq consult-vulpea--current-note-id id))))
 
 (defun consult-vulpea--note-preview ()
   "Create a preview function for vulpea notes.
@@ -89,10 +151,47 @@ Expects CAND to be a `vulpea-note' object (via :lookup)."
         (preview (consult--buffer-preview)))
     (lambda (action cand)
       (when (eq action 'exit)
-        (funcall open))
+        (funcall open)
+        (mapc #'delete-overlay consult-vulpea--overlays)
+        (setq consult-vulpea--overlays nil)
+        (setq consult-vulpea--current-note-id nil))
       (when (and (eq action 'preview) (vulpea-note-p cand))
-        (funcall preview action
-                 (funcall open (vulpea-note-path cand)))))))
+        (let* ((buffer (funcall open (vulpea-note-path cand))))
+          (funcall preview action buffer)
+
+          ;; If the level of the note is > 0, it means the note is a heading
+          ;; note. Make sure we center arount the heading note during preview
+          ;; and expand any folded sections to make sure the heading is visible.
+          (when (> (vulpea-note-level cand) 0)
+            (with-current-buffer buffer
+              (goto-char (vulpea-note-pos cand))
+              (org-show-entry)
+              (recenter)
+              (when consult-vulpea-narrow-heading-note
+                (org-narrow-to-subtree))))
+
+          ;; If consult-vulpea--current-note-id is non nil, it means we are
+          ;; previewing backlinks. Let's add overlays to mark the backlinks
+          (when consult-vulpea--current-note-id
+            (let* ((links (vulpea-note-links cand))
+                   (backlink-links
+                    (seq-filter
+                     (lambda (link)
+                       (and (equal (plist-get link :type) "id")
+                            (equal
+                             (plist-get link :dest)
+                             consult-vulpea--current-note-id)))
+                     links)))
+              ;; Highlight backlinks in the preview buffer
+              (with-current-buffer buffer
+                (mapc #'consult-vulpea--highlight-link backlink-links)
+
+                ;; Center around the first backlink if any, and expand any
+                ;; folded sections to make sure the backlink is visible
+                (when backlink-links
+                  (goto-char (plist-get (car backlink-links) :pos))
+                  (recenter)
+                  (org-show-entry))))))))))
 
 ;;;; Core selection function
 
@@ -190,9 +289,12 @@ selecting notes."
       (progn
         ;; Override vulpea-select-from with our consult version
         (advice-add #'vulpea-select-from
-                    :override #'consult-vulpea-select-from))
+                    :override #'consult-vulpea-select-from)
+        (advice-add #'vulpea-find-backlink :before #'consult-vulpea--before-find-backlink))
     ;; Remove our advice
-    (advice-remove #'vulpea-select-from #'consult-vulpea-select-from)))
+    (advice-remove #'vulpea-select-from #'consult-vulpea-select-from)
+    (advice-remove #'vulpea-find-backlink #'consult-vulpea--before-find-backlink)))
+
 
 (provide 'consult-vulpea)
 ;;; consult-vulpea.el ends here
