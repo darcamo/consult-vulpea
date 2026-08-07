@@ -129,8 +129,8 @@ EXPAND-ALIASES when non-nil expands note aliases for completion."
          (category (alist-get 'category metadata))
          (annotation-function (alist-get 'annotation-function metadata))
 
-         ;; Track user's raw input for new note creation
-         (user-input nil)
+         ;; Track user's raw input for new note creation.
+         (user-input (or initial-prompt ""))
          (note (consult--read
                 completions
                 :prompt (concat prompt ": ")
@@ -149,15 +149,9 @@ EXPAND-ALIASES when non-nil expands note aliases for completion."
                           (setq user-input selected)
                           (cdr (assoc selected completions))))))
     (or note
-        (let ((title (or (and user-input
-                              (not (string-empty-p (string-trim user-input)))
-                              (substring-no-properties user-input))
-                         (and initial-prompt
-                              (not (string-empty-p (string-trim initial-prompt)))
-                              (substring-no-properties initial-prompt)))))
-          (make-vulpea-note
-           :title (or title "")
-           :level 0)))))
+        (make-vulpea-note
+         :title (substring-no-properties user-input)
+         :level 0))))
 
 ;;;; Commands
 
