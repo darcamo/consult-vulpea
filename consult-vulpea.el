@@ -117,30 +117,37 @@ EXPAND-ALIASES when non-nil expands note aliases for completion."
   (let* ((expanded-notes (if expand-aliases
                              (seq-mapcat #'vulpea-note-expand-aliases notes)
                            notes))
-         ;; Build candidates as alist: (description . note)
-         (candidates
-          (mapcar
-           (lambda (note)
-             (cons (vulpea-select-describe note) note))
-           expanded-notes))
+         (context (when vulpea-select-dyncontext-fn
+                    (funcall vulpea-select-dyncontext-fn expanded-notes)))
+         (completions (seq-map
+                       (lambda (n)
+                         (cons (vulpea-select-describe n context)
+                               n))
+                       expanded-notes))
+         (candidates-table (vulpea-select--completion-table completions))
+         (metadata (funcall candidates-table nil nil 'metadata))
+         (category (alist-get 'category metadata))
+         (annotation-function (alist-get 'annotation-function metadata))
+
          ;; Track user's raw input for new note creation
          (user-input nil)
          (note (consult--read
-                candidates
+                completions
                 :prompt (concat prompt ": ")
                 :require-match require-match
                 :initial initial-prompt
                 :history 'minibuffer-history
                 :state (consult-vulpea--note-preview)
                 :preview-key consult-vulpea-preview-key
-                :category 'vulpea-note
                 :sort t
+                :category category
+                :annotate annotation-function
                 ;; :lookup returns the note object from alist, making it
                 ;; available to :state for preview and as the return value.
                 ;; Also captures raw input for new note creation.
-                :lookup (lambda (selected candidates &rest _)
+                :lookup (lambda (selected completions &rest _)
                           (setq user-input selected)
-                          (cdr (assoc selected candidates))))))
+                          (cdr (assoc selected completions))))))
     (or note
         (let ((title (or (and user-input
                               (not (string-empty-p (string-trim user-input)))
