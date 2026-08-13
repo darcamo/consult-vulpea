@@ -6,7 +6,7 @@ Use [Consult](https://github.com/minad/consult) in tandem with [Vulpea](https://
 
 ## Features
 
-- **Live previews**: When selecting notes via `vulpea-find` or `vulpea-insert`, get a live preview of the note file as you navigate through candidates.
+- **Live previews**: When selecting notes via `vulpea-find`, `vulpea-insert` and `vulpea-find-backlink`, get a live preview of the note file as you navigate through candidates. During `vulpea-find-backlink` preview, the backlinks are also highlighted and you can easily navigate between them..
 - **Consult-powered grep/find**: Use `consult-vulpea-grep` and `consult-vulpea-find` to search within your vulpea directories with live previews.
 
 ## Installation
@@ -58,9 +58,22 @@ Add to `config.el`:
 | `consult-vulpea-find-command` | `consult-find` | Find command to use |
 | `consult-vulpea-preview-key` | `consult-preview-key` | Key to trigger preview, defaults to consult's global setting |
 
+The `consult-vulpea-preview-face` face can be customized to modify how backlinks are highlighted during preview. You can also move between different backlinks during preview with the `consult-vulpea-go-to-next-backlink-overlay`/`consult-vulpea-go-to-previous-backlink-overlay` functions. The configuration below adapts the previous use-package configuration to add keybinds for `Ctrl+<right/left>` arrow keys to these two functions.
+
+```emacs-lisp
+(use-package consult-vulpea
+  :ensure t
+  :after vulpea
+  :config
+  (consult-vulpea-mode 1)
+  :bind ( :map minibuffer-local-map
+          ("C-<right>" . consult-vulpea-go-to-next-backlink-overlay)
+          ("C-<left>" . consult-vulpea-go-to-previous-backlink-overlay)))
+```
+
 ## How it works
 
-When `consult-vulpea-mode` is enabled, the package advises `vulpea-select-from` with a consult-powered replacement. This means all vulpea commands that use the note selection interface (like `vulpea-find` and `vulpea-insert`) automatically gain consult features.
+When `consult-vulpea-mode` is enabled, the package advises `vulpea-select-from` with a consult-powered replacement. This means all vulpea commands that use the note selection interface (like `vulpea-find`, `vulpea-insert` and `vulpea-find-backlink`) automatically gain consult features. In the case of `vulpea-find-backlink`, overlays are created in the preview buffer to highligh all backlinks.
 
 ## Requirements
 
