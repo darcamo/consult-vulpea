@@ -73,6 +73,8 @@ This is added when previewing note backlinks, and cleared when preview finishes.
 (defvar consult-vulpea--current-note-id nil "ID of the current note when previewing backlinks.")
 
 
+(defvar consult-vulpea--current-backlink-index nil "Index of the current centered backlink.")
+
 ;;;; User options
 
 (defcustom consult-vulpea-grep-command #'consult-ripgrep
@@ -139,7 +141,65 @@ cleaning."
                  (consult-vulpea--get-link-at-point-bounds link-pos))
                 (overlay (make-overlay (car link-bounds) (cdr link-bounds))))
       (overlay-put overlay 'face 'consult-vulpea-preview-face)
-      (push overlay consult-vulpea--overlays))))
+      overlay)))
+
+
+(defun consult-vulpea--create-backlinks-overlays (backlink-links)
+  "Create an overlay in every backlink in BACKLINK-LINKS.
+
+BACKLINK-LINKS is a list of links, similar to what is returned by
+`vulpea-note-links'."
+
+  ;; Create the overlays in each backlink and save the overlays in
+  ;; `consult-vulpea--overlays'
+  (setq consult-vulpea--overlays
+        (mapcar #'consult-vulpea--highlight-link backlink-links)))
+
+
+(defun consult-vulpea--clear-backlinks-overlays ()
+  "Delete all backlink overlays."
+  (mapc #'delete-overlay consult-vulpea--overlays)
+  (setq consult-vulpea--overlays nil)
+  (setq consult-vulpea--current-backlink-index nil))
+
+
+(defun consult-vulpea-go-to-next-backlink-overlay (&optional invert)
+  "Move point to the next backlink.
+
+If INVERT is t, move to the previous backlink."
+  (interactive)
+  (when-let* ((all-overlays consult-vulpea--overlays)
+              (num-overlays (length all-overlays))
+              (index
+               (if consult-vulpea--current-backlink-index
+                   (if invert
+                       (mod
+                        (1- consult-vulpea--current-backlink-index)
+                        num-overlays)
+                     (mod
+                      (1+ consult-vulpea--current-backlink-index) num-overlays))
+                 0))
+              (ov (nth index all-overlays))
+              (buffer (overlay-buffer ov))
+              (pos (overlay-start ov)))
+
+    (setq consult-vulpea--current-backlink-index index)
+
+    (with-current-buffer buffer
+      (when-let* ((window (get-buffer-window buffer)))
+        (with-selected-window window
+          (consult--minibuffer-message
+           (format "Centered in backlink %s of %s" (1+ index) num-overlays))
+          (goto-char pos)
+          (recenter)
+          (org-show-entry))))))
+
+
+(defun consult-vulpea-go-to-previous-backlink-overlay ()
+  "Move point to the previous backlink."
+  (interactive)
+  (consult-vulpea-go-to-next-backlink-overlay t))
+
 
 (defun consult-vulpea--before-find-backlink ()
   "Advice that will be added before `vulpea-find-backlink'.
@@ -159,10 +219,10 @@ Expects CAND to be a `vulpea-note' object (via :lookup)."
     (lambda (action cand)
       (when (eq action 'exit)
         (funcall open)
-        (mapc #'delete-overlay consult-vulpea--overlays)
-        (setq consult-vulpea--overlays nil)
+        (consult-vulpea--clear-backlinks-overlays)
         (setq consult-vulpea--current-note-id nil))
       (when (and (eq action 'preview) (vulpea-note-p cand))
+        (setq consult-vulpea--current-backlink-index nil)
         (let* ((buffer (funcall open (vulpea-note-path cand))))
           (funcall preview action buffer)
 
@@ -191,14 +251,11 @@ Expects CAND to be a `vulpea-note' object (via :lookup)."
                      links)))
               ;; Highlight backlinks in the preview buffer
               (with-current-buffer buffer
-                (mapc #'consult-vulpea--highlight-link backlink-links)
+                (consult-vulpea--create-backlinks-overlays backlink-links)
 
-                ;; Center around the first backlink if any, and expand any
-                ;; folded sections to make sure the backlink is visible
-                (when backlink-links
-                  (goto-char (plist-get (car backlink-links) :pos))
-                  (recenter)
-                  (org-show-entry))))))))))
+                ;; Center around the first backlink and expand any folded
+                ;; sections to make sure the backlink is visible
+                (consult-vulpea-go-to-next-backlink-overlay)))))))))
 
 ;;;; Core selection function
 
