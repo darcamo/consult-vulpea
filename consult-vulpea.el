@@ -5,7 +5,7 @@
 ;; Author: Fabrizio Contigiani <fabcontigiani@gmail.com>
 ;; Maintainer: Fabrizio Contigiani <fabcontigiani@gmail.com>
 ;; URL: https://github.com/fabcontigiani/consult-vulpea
-;; Version: 0.2.1
+;; Version: 0.3.0
 ;; Package-Requires: ((emacs "28.1") (vulpea "2.0.0") (consult "2.2"))
 ;; Keywords: convenience, notes, vulpea
 
@@ -105,7 +105,7 @@ This can be overridden per-call with the :expand-aliases parameter."
   :group 'consult-vulpea)
 
 (defcustom consult-vulpea-narrow-heading-note nil
-  "Narrow heading note while previwing.
+  "Narrow heading note while previewing.
 
 This is useful when previewing heading notes, as it will narrow the
 buffer to the heading note and its children, making it easier to read."
@@ -227,7 +227,7 @@ Expects CAND to be a `vulpea-note' object (via :lookup)."
           (funcall preview action buffer)
 
           ;; If the level of the note is > 0, it means the note is a heading
-          ;; note. Make sure we center arount the heading note during preview
+          ;; note. Make sure we center around the heading note during preview
           ;; and expand any folded sections to make sure the heading is visible.
           (when (> (vulpea-note-level cand) 0)
             (with-current-buffer buffer
