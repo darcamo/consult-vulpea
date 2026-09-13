@@ -159,8 +159,7 @@ BACKLINK-LINKS is a list of links, similar to what is returned by
 (defun consult-vulpea--clear-backlinks-overlays ()
   "Delete all backlink overlays."
   (mapc #'delete-overlay consult-vulpea--overlays)
-  (setq consult-vulpea--overlays nil)
-  (setq consult-vulpea--current-backlink-index nil))
+  (setq consult-vulpea--overlays nil))
 
 
 (defun consult-vulpea-go-to-next-backlink-overlay (&optional invert)
@@ -217,9 +216,10 @@ Expects CAND to be a `vulpea-note' object (via :lookup)."
   (let ((open (consult--temporary-files))
         (preview (consult--buffer-preview)))
     (lambda (action cand)
+      (consult-vulpea--clear-backlinks-overlays)
       (when (eq action 'exit)
         (funcall open)
-        (consult-vulpea--clear-backlinks-overlays)
+        (setq consult-vulpea--current-backlink-index nil)
         (setq consult-vulpea--current-note-id nil))
       (when (and (eq action 'preview) (vulpea-note-p cand))
         (setq consult-vulpea--current-backlink-index nil)
