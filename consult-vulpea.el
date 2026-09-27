@@ -52,6 +52,10 @@
 (require 'vulpea-db)
 (require 'vulpea-select)
 
+;; Present in vulpea versions that keep selection candidates in memory
+(declare-function vulpea-select-from-cache "vulpea-select")
+(declare-function vulpea-select-cache-candidates "vulpea-select")
+
 (defgroup consult-vulpea ()
   "Use Consult with Vulpea for enhanced note selection."
   :group 'vulpea
@@ -290,8 +294,56 @@ If not specified, defaults to `consult-vulpea-expand-aliases-default'."
                        (lambda (n)
                          (cons (vulpea-select-describe n context)
                                n))
-                       expanded-notes))
-         (candidates-table (vulpea-select--completion-table completions))
+                       expanded-notes)))
+    (consult-vulpea--read-note
+     prompt completions
+     (lambda (selected) (cdr (assoc selected completions)))
+     require-match initial-prompt)))
+
+(cl-defun consult-vulpea-select-from-cache (prompt
+                                             &key
+                                             require-match
+                                             initial-prompt
+                                             filter)
+  "Select a note from the vulpea candidate cache using consult with preview.
+
+Returns a selected `vulpea-note'. If `vulpea-note-id' is nil, it
+means that user selected a non-existing note.
+
+This is a drop-in replacement for `vulpea-select-from-cache', which
+`vulpea-find' and `vulpea-insert' use for their default selection
+when vulpea keeps its candidates in memory (see
+`vulpea-select-cache').  Candidates are served from that cache and
+only the previewed or picked note is read from the database.
+
+PROMPT is the message to present.
+REQUIRE-MATCH when non-nil means user must select an existing note.
+INITIAL-PROMPT is the initial input for the prompt.
+FILTER is the default filter of the command, when vulpea serves it
+from the cache (see `vulpea-select-cache-default-filters')."
+  (let ((candidates (if filter
+                        (vulpea-select-cache-candidates filter)
+                      (vulpea-select-cache-candidates))))
+    (consult-vulpea--read-note
+     prompt candidates
+     (lambda (selected)
+       (when-let* ((candidate (car (member selected candidates))))
+         (vulpea-select-candidate-note candidate)))
+     require-match initial-prompt)))
+
+(defun consult-vulpea--read-note (prompt collection lookup
+                                         require-match initial-prompt)
+  "Read a note from COLLECTION with consult, previewing candidates.
+
+COLLECTION is what `vulpea-select--completion-table' completes over:
+an alist of (CANDIDATE . NOTE) or a list of candidate strings.
+LOOKUP turns a selected candidate string into its `vulpea-note', or
+nil when the input names no note.  PROMPT, REQUIRE-MATCH and
+INITIAL-PROMPT are as in `consult-vulpea-select-from'.
+
+Returns the selected note, or a note with only a title (and a nil
+`vulpea-note-id') for input that matches no candidate."
+  (let* ((candidates-table (vulpea-select--completion-table collection))
          (metadata (funcall candidates-table nil nil 'metadata))
          (category (alist-get 'category metadata))
          (annotation-function (alist-get 'annotation-function metadata))
@@ -306,7 +358,7 @@ If not specified, defaults to `consult-vulpea-expand-aliases-default'."
          (note (save-excursion
                  (save-restriction
                    (consult--read
-                    completions
+                    collection
                     :prompt (concat prompt ": ")
                     :require-match require-match
                     :initial initial-prompt
@@ -316,12 +368,13 @@ If not specified, defaults to `consult-vulpea-expand-aliases-default'."
                     :sort t
                     :category category
                     :annotate annotation-function
-                    ;; :lookup returns the note object from alist, making it
-                    ;; available to :state for preview and as the return value.
-                    ;; Also captures raw input for new note creation.
-                    :lookup (lambda (selected completions &rest _)
+                    ;; :lookup returns the note object, making it
+                    ;; available to :state for preview and as the return
+                    ;; value.  Also captures raw input for new note
+                    ;; creation.
+                    :lookup (lambda (selected &rest _)
                               (setq user-input selected)
-                              (cdr (assoc selected completions))))))))
+                              (funcall lookup selected)))))))
     (or note
         (make-vulpea-note
          :title (substring-no-properties user-input)
@@ -357,7 +410,10 @@ in `vulpea-db-sync-directories'."
 
 When enabled, this mode replaces `vulpea-select-from' with a
 consult-powered version that provides live previews when
-selecting notes."
+selecting notes.  With a vulpea that keeps its selection candidates
+in memory (see `vulpea-select-cache'), `vulpea-select-from-cache' is
+replaced as well, so `vulpea-find' and `vulpea-insert' keep both the
+previews and the cache."
   :global t
   :lighter " cv"
   :group 'consult-vulpea
@@ -366,9 +422,15 @@ selecting notes."
         ;; Override vulpea-select-from with our consult version
         (advice-add #'vulpea-select-from
                     :override #'consult-vulpea-select-from)
+        (when (fboundp 'vulpea-select-from-cache)
+          (advice-add #'vulpea-select-from-cache
+                      :override #'consult-vulpea-select-from-cache))
         (advice-add #'vulpea-find-backlink :before #'consult-vulpea--before-find-backlink))
     ;; Remove our advice
     (advice-remove #'vulpea-select-from #'consult-vulpea-select-from)
+    (when (fboundp 'vulpea-select-from-cache)
+      (advice-remove #'vulpea-select-from-cache
+                     #'consult-vulpea-select-from-cache))
     (advice-remove #'vulpea-find-backlink #'consult-vulpea--before-find-backlink)))
 
 

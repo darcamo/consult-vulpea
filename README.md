@@ -75,6 +75,8 @@ The `consult-vulpea-preview-face` face can be customized to modify how backlinks
 
 When `consult-vulpea-mode` is enabled, the package advises `vulpea-select-from` with a consult-powered replacement. This means all vulpea commands that use the note selection interface (like `vulpea-find`, `vulpea-insert` and `vulpea-find-backlink`) automatically gain consult features. In the case of `vulpea-find-backlink`, overlays are created in the preview buffer to highligh all backlinks.
 
+Vulpea versions that keep selection candidates in memory (`vulpea-select-cache`) serve the default `vulpea-find` and `vulpea-insert` selection through `vulpea-select-from-cache` instead, and the mode advises that one too, so those commands keep both the previews and the cache. Only the previewed or picked note is read from the database.
+
 ## Requirements
 
 - Emacs 28.1+
